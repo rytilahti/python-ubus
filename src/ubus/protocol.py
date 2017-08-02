@@ -153,6 +153,7 @@ class Ubus:
         # 'timeout': 300,
         # 'ubus_rpc_session': '7099de950604de9f358d16fc8e8e4950'}]}
         #print(result)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # TODO invalidate token
