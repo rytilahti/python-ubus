@@ -159,6 +159,9 @@ class Ubus:
         # TODO invalidate token
         pass
 
+    def is_valid_session(self):
+        return self._session_id != Ubus.EMPTY_SESSION
+
     @property
     def session_id(self) -> str:
         return self._session_id
