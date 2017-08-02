@@ -25,6 +25,19 @@ class UbusError(IntEnum):
     __UBUS_STATUS_LAST = 11
 
 
+class RPCError(IntEnum):
+    """ from https://git.openwrt.org/?p=project/uhttpd.git;a=blob;f=ubus.c#l79
+    """
+    ERROR_PARSE = -32700
+    ERROR_INVALID_REQUEST = -32600
+    ERROR_METHOD_NOT_FOUND = -32601
+    ERROR_INVALID_PARAMETERS = -32602
+    ERROR_INTERNAL = -32603
+    ERROR_OBJECT_NOT_FOUND = -32000
+    ERROR_SESSION_NOT_FOUND = -32001
+    ERROR_ACCESS_DENIED = -32002
+    ERROR_TIMEOUT = -32003
+
 class UbusException(Exception):
     pass
 
@@ -103,6 +116,8 @@ class UbusNamespace:
 
 
 class Ubus:
+    EMPTY_SESSION = "00000000000000000000000000000000"
+
     def __init__(self, host, username=None, password=None):
         self.endpoint = 'http://%s/ubus' % host
         self.username = username
@@ -110,7 +125,7 @@ class Ubus:
         self.timeout = 5
         self._ifaces = None
         self._message_id = 0
-        self._session_id = "00000000000000000000000000000000"
+        self._session_id = Ubus.EMPTY_SESSION
         _LOGGER.debug("Using %s with username %s", self.endpoint, self.username)
 
     @property
@@ -119,7 +134,8 @@ class Ubus:
         return self._message_id
 
     def login(self, username=None, password=None):
-        result = self["session"]["login"](username=username, password=password)
+        self._session_id = Ubus.EMPTY_SESSION
+        result = self["session"]["login"](username=username, password=password, timeout=5)
         if "ubus_rpc_session" not in result:
             raise UbusException("Login failed, got no ubus_rpc_session: %s" % result)
         self._session_id = result["ubus_rpc_session"]
@@ -139,15 +155,17 @@ class Ubus:
         #print(result)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # TODO invalidate token
         pass
 
     @property
-    def session_id(self):
+    def session_id(self) -> str:
         return self._session_id
 
     def _do_request(self, rpcmethod, subsystem, method, **params):
         if len(params) == 0:
             params = {}
+        retry_count = params.get("retry_count", 1)
         data = json.dumps({"jsonrpc": "2.0",
                            "id": self.id,
                            "method": rpcmethod,
@@ -169,7 +187,21 @@ class Ubus:
             _LOGGER.debug("<< %s" % pf(response))
 
             if 'error' in response:
-                raise UbusException("Got error from ubus: %s" % response['error'])
+                # {'code': -32002, 'message': 'Access denied'}
+                error = RPCError(response["error"]["code"])
+                if error == RPCError.ERROR_ACCESS_DENIED:
+                    if self._session_id == Ubus.EMPTY_SESSION:
+                        raise UbusException("Access denied with empty session, please login() first." % response)
+                    else:
+                        if retry_count < 1:
+                            raise UbusException("Access denied, '%s' has no permission to call '%s' on '%s'" % (self.username, method, subsystem))
+
+                        _LOGGER.warning("Got access denied, renewing a session an trying again..")
+                        self.login(self.username, self.password)
+                        params["retry_count"] = retry_count - 1
+                        return self._do_request(rpcmethod, subsystem, method, **params)
+                else:
+                    raise UbusException("Got error from ubus: %s" % response['error'])
 
             if 'result' not in response:
                 raise UbusException("Got no result: %s" % response)
