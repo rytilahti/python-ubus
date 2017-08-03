@@ -135,7 +135,11 @@ class Ubus:
 
     def login(self, username=None, password=None):
         self._session_id = Ubus.EMPTY_SESSION
-        result = self["session"]["login"](username=username, password=password, timeout=5)
+        if username is None:
+            username = self.username
+        if password is None:
+            password = self.password
+        result = self["session"]["login"](username=username, password=password)
         if "ubus_rpc_session" not in result:
             raise UbusException("Login failed, got no ubus_rpc_session: %s" % result)
         self._session_id = result["ubus_rpc_session"]
@@ -200,8 +204,8 @@ class Ubus:
                         if retry_count < 1:
                             raise UbusException("Access denied, '%s' has no permission to call '%s' on '%s'" % (self.username, method, subsystem))
 
-                        _LOGGER.warning("Got access denied, renewing a session an trying again..")
-                        self.login(self.username, self.password)
+                        _LOGGER.warning("Got access denied, renewing a session and trying again..")
+                        self.login()
                         params["retry_count"] = retry_count - 1
                         return self._do_request(rpcmethod, subsystem, method, **params)
                 else:
