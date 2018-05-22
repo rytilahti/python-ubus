@@ -24,7 +24,7 @@ def read(*names, **kwargs):
 
 setup(
     name='ubus',
-    version='0.0.1',
+    version='0.0.2',
     license='LGPLv2+',
     description='python ubus interface',
     long_description='%s\n%s' % (
