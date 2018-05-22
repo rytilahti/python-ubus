@@ -218,6 +218,8 @@ class Ubus:
             if isinstance(result, dict): # got payload, passing directly
                 return result
             if isinstance(result, list): # got list, first one for error code, second for payload
+                if len(result) == 1 and (UbusError(result[0]) == UbusError.UBUS_STATUS_OK):
+                    return result
                 if len(result) == 1:
                     error = UbusError(result[0])
                     raise UbusException("Got error %s" % error)
